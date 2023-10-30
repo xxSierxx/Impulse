@@ -1,0 +1,150 @@
+#include <libopencm3/stm32/rcc.h>
+#include <libopencm3/stm32/gpio.h>
+#include <libopencm3/stm32/timer.h>
+#include <libopencm3/cm3/nvic.h>
+#include <libopencm3/cm3/systick.h>
+#include <libopencm3/stm32/adc.h>
+#include <libopencm3/stm32/dac.h>
+#include <cmath>
+
+void delay ();
+constexpr uint16_t POINT_PERIOD{100}; //счётных импульсов на период
+constexpr uint32_t CK_CNT_Hz{1'000'000}; //  частота счётного импульса. Минимум 10. Это нужно ли увеличить?
+
+int main () {
+
+    float nums, reg, reg1;
+    volatile int volt = 0, volt1 = -1;
+
+    //    Настройка  и запуск си nums += 1.25;системного таймера
+    //    systick_set_frequency(CK_CNT_Hz, rcc_ahb_frequency);
+    //    systick_interrupt_enable();
+    //    systick_counter_enable(); // для 1 кГц или 10кГц
+
+    //    rcc_clock_setup_pll(&rcc_hse_8mhz_3v3[RCC_CLOCK_3V3_168MHZ]);
+
+
+    rcc_periph_clock_enable(RCC_TIM1);  //  тактирование таймера_1
+    rcc_periph_clock_enable(RCC_GPIOA); //  тактирование для ШИМ
+    rcc_periph_clock_enable(RCC_GPIOD); //  тактирование канала D для светодиода
+    rcc_periph_clock_enable(RCC_ADC1);  //  тактирование для АЦП
+
+    gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO0); // запуск АЦП
+    gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO8);     // запуск ШИМ
+    gpio_mode_setup(GPIOD,GPIO_MODE_OUTPUT,GPIO_PUPD_NONE,GPIO15);   // запуск голубого светодиода
+    gpio_set_af(GPIOA, GPIO_AF1, GPIO8); // установка АФ для ШИМ
+
+    // Настройка ШИМ
+
+    timer_set_prescaler(TIM1, rcc_get_timer_clk_freq(TIM1)/CK_CNT_Hz - 1);
+    // 0 - деление на "1",  на единицу меньше того из-за аппаратной составляющей
+    timer_set_period(TIM1, POINT_PERIOD - 1);             //период шима
+    timer_set_oc_value(TIM1, TIM_OC1, POINT_PERIOD - 90); // установка значения сравнения выхода
+    timer_set_oc_mode(TIM1, TIM_OC1, TIM_OCM_PWM1);       // устанавливаем для порта_1 генерацию ШИМ
+    timer_enable_oc_output(TIM1, TIM_OC1);                // включения выходного порта-сравнения
+    timer_enable_break_main_output(TIM1);                 // включает режи простоя
+    timer_enable_counter(TIM1);                           // запуск таймера_1
+
+
+    //Подключение АЦП
+
+    adc_power_off(ADC1);                                  // отключение АЦП-ADC1
+    rcc_periph_reset_pulse(RST_ADC);                      // сброс импульса на АЦП
+    adc_set_clk_prescale(ADC_CCR_ADCPRE_BY2);             // установка делителя АЦП
+    adc_disable_scan_mode(ADC1);                          // отключение скан.мода
+    adc_set_single_conversion_mode(ADC1);                 // убирает повторный перебор
+    adc_set_sample_time(ADC1, ADC_CHANNEL0, ADC_SMPR_SMP_15CYC);// установка количество циклов преобразования
+    adc_power_on(ADC1);                                   // включение АЦП
+
+    // Подключение ЦАП
+
+    gpio_mode_setup(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO4);    //Подготовить линию порта (PA4 - 1 канал, PA5 -2)
+                                                                        //(режим аналоговой линии, тактирование)
+    rcc_periph_clock_enable(RCC_DAC);                                   //Подготовить ЦАП(тактирование)
+    dac_enable(DAC1, DAC_CHANNEL1);                                     //Разрешить работу
+
+    while (true) {
+
+     if (volt<=4000){
+            if(volt == 3900){
+                volt1 = volt;
+                volt+=100;
+                continue;
+            }
+          // delay();
+           dac_load_data_buffer_single(DAC1, volt, DAC_ALIGN_RIGHT12, DAC_CHANNEL1);
+
+           volt+=100;
+           continue;
+           }
+
+           while(volt1>=0){
+           //delay();
+           dac_load_data_buffer_single(DAC1, volt1, DAC_ALIGN_RIGHT12, DAC_CHANNEL1);
+
+           volt1-=100;
+           if(volt1==0)
+            volt = volt1;
+             }
+       }
+}
+void delay (){
+    for(volatile int i = 0; i<1'000'000; i++){
+
+    }
+}
+
+//       while (volt<20) {
+//          volt-=1;
+//        }
+
+
+
+//        adc_start_conversion_regular(ADC1);               // включение режима regular для АЦП-ADC1
+//        while(!(ADC_SR(ADC1) & ADC_SR_EOC))               // ожидание завершения преобразования
+//        {
+//         }
+
+//        gpio_toggle(GPIOD, GPIO15);                       // переключение светодиода
+
+//        reg = adc_read_regular(ADC1);                     // запись значения на АЦП
+
+//        if (reg>70) {                   //задаем порог срабатывания для защиты от дребезга
+//            reg1 = reg/4095*1145+2950;
+//            nums = reg1/4095;           //пересчитываем значения для работы всего диапазона потенциометра только на рабочем значении ШИМ для двигателя
+//            timer_set_oc_value (TIM1, TIM_OC1, POINT_PERIOD * nums); // установка значения выхода-сравнения
+//        }
+//        else {
+//            timer_set_oc_value (TIM1, TIM_OC1, POINT_PERIOD * 0);
+//        }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+//  вход 1-АЦП 1 канал PA1 - вход АЦП
+
+
+
+//uint32_t ticks{0}; //Счетчик тиков сиситемного таймера (время в мс)
+//Обработчик прерывания системного таймера
+//void sys_tick_handler (void){
+//    ticks++;
+//}
+
+//if (ptime < 10'000) timer_set_oc_value(TIM1, TIM_OC4, BLINK_PERIOD_MS/8-1);
+//else if (ptime < 20'000) timer_set_oc_value(TIM1, TIM_OC4, BLINK_PERIOD_MS/8*4);
+//else if (ptime < 30'000) timer_set_oc_value(TIM1, TIM_OC4, BLINK_PERIOD_MS/8*7);
+//else timer_set_oc_value(TIM1, TIM_OC4, BLINK_PERIOD_MS)
