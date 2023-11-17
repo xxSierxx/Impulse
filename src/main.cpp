@@ -13,7 +13,7 @@ void acp ();
 void pwm();
 
 
-constexpr uint32_t POINT_PERIOD{5'000'00}; //счётных импульсов на период
+constexpr uint32_t POINT_PERIOD{1'000'0}; //счётных импульсов на период
 constexpr uint32_t CK_CNT_Hz{1'000'000}; //  частота счётного импульса. Минимум 10. Это нужно ли увеличить?
 int32_t ticks{0}; //Счетчик тиков сиситемного таймера (время в мс)
 int s = 1;
@@ -21,10 +21,10 @@ int s = 1;
 int main () {
 
     //Настройка таймера
-    rcc_periph_clock_enable(RCC_GPIOB);
+    rcc_periph_clock_enable(RCC_GPIOE);
     rcc_periph_clock_enable(RCC_TIM2);
     timer_set_prescaler(TIM2,rcc_get_timer_clk_freq(TIM2) / CK_CNT_Hz - 1);
-
+   gpio_mode_setup(GPIOE,GPIO_MODE_OUTPUT,GPIO_PUPD_NONE,GPIO9|GPIO11|GPIO13|GPIO14);
     rcc_periph_clock_enable(RCC_GPIOD); //  тактирование канала D для светодиода
     gpio_mode_setup(GPIOD, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,GPIO13);   // запуск голубого светодиода
 
@@ -47,8 +47,6 @@ int main () {
         //PE9 - синий, PE11 - желтый, PE13 - розовый, PE14 - оранжевый
 
         if(timer_get_flag(TIM2,TIM_SR_UIF != 0)) {
-
-            gpio_toggle(GPIOD, GPIO13);
 
 
         }
@@ -100,6 +98,9 @@ void tim2_isr (void){
         }
         s++;
     }
+
+ gpio_toggle(GPIOD, GPIO13);
+
 
 }
 
