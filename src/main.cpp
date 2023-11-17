@@ -13,82 +13,103 @@ void acp ();
 void pwm();
 
 
-constexpr uint16_t POINT_PERIOD{100}; //счётных импульсов на период
+constexpr uint32_t POINT_PERIOD{5'000'00}; //счётных импульсов на период
 constexpr uint32_t CK_CNT_Hz{1'000'000}; //  частота счётного импульса. Минимум 10. Это нужно ли увеличить?
 int32_t ticks{0}; //Счетчик тиков сиситемного таймера (время в мс)
-
+int s = 1;
 
 int main () {
 
-    float nums, reg, reg1;
-    volatile int volt = 0, volt1 = -1;
+    //Настройка таймера
+    rcc_periph_clock_enable(RCC_GPIOB);
+    rcc_periph_clock_enable(RCC_TIM2);
+    timer_set_prescaler(TIM2,rcc_get_timer_clk_freq(TIM2) / CK_CNT_Hz - 1);
+
+    rcc_periph_clock_enable(RCC_GPIOD); //  тактирование канала D для светодиода
+    gpio_mode_setup(GPIOD, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,GPIO13);   // запуск голубого светодиода
 
 
-    systick_set_frequency(CK_CNT_Hz, rcc_ahb_frequency);
-    systick_interrupt_enable();
-    systick_counter_enable(); // для 1 кГц или 10кГц
-    rcc_periph_clock_enable(RCC_TIM1);
+    timer_set_period(TIM2, POINT_PERIOD - 1);
+
+    nvic_enable_irq(NVIC_TIM2_IRQ);
+    nvic_set_priority(NVIC_TIM2_IRQ,1);
+    timer_enable_irq(TIM2, TIM_DIER_UIE);
+
+    timer_enable_counter(TIM2);
+
 
     void interrupt();
-    rcc_periph_clock_enable(RCC_GPIOD); //  тактирование канала D для светодиода
-
-
-
-    gpio_mode_setup(GPIOD,GPIO_MODE_OUTPUT,GPIO_PUPD_NONE,GPIO15);   // запуск голубого светодиода
-
-
-
-    timer_set_prescaler(TIM1, rcc_get_timer_clk_freq(TIM1)/CK_CNT_Hz - 1);
-    timer_set_period(TIM1, POINT_PERIOD - 1);
-    timer_set_oc_value(TIM1, TIM_OC4, POINT_PERIOD/8);
-    timer_set_oc_mode(TIM1, TIM_OC4, TIM_OCM_PWM1);
-    timer_enable_oc_output(TIM1, TIM_OC4);
-    timer_enable_break_main_output(TIM1);
-
-    timer_enable_counter(TIM1);
-
-    rcc_periph_clock_enable(RCC_GPIOE);
-
-
-
-    nvic_enable_irq(NVIC_SYSTICK_IRQ);
-    timer_enable_irq(TIM1, TIM_DIER_UIE);
-    timer_enable_counter(TIM1);
-
-
-
 
 
     while (true) {
 
-        gpio_toggle(GPIOD, GPIO15);
 
-      switch ((ticks == 0)?1:(ticks==10)?2:(ticks==20)?3:(ticks==30)?4:5){
-        case 1:
-          gpio_set(GPIOE, GPIO14);
-          gpio_clear(GPIOE, GPIO11|GPIO13|GPIO9);
-          break;
-        case 2:
+        //PE9 - синий, PE11 - желтый, PE13 - розовый, PE14 - оранжевый
 
-          break;
-      case 3:
-          break;
-      case 4:
-          break;
-      case 5:
-          void sys_tick_handler (void);
-          break;
+        if(timer_get_flag(TIM2,TIM_SR_UIF != 0)) {
+
+            gpio_toggle(GPIOD, GPIO13);
+
+
+        }
+
     }
 }
-void sys_tick_handler (void){
-    ticks++;
+
+void tim2_isr (void){
+
+    if (timer_interrupt_source(TIM2, TIM_SR_UIF)) {
+        timer_clear_flag(TIM2, TIM_SR_UIF);
+
+        switch (s){
+        case 1:
+            gpio_set(GPIOE, GPIO14);
+            gpio_clear(GPIOE, GPIO9|GPIO11|GPIO13);
+            break;
+        case 2:
+            gpio_set(GPIOE, GPIO11|GPIO14);
+            gpio_clear(GPIOE, GPIO9|GPIO13);
+            break;
+        case 3:
+            gpio_set(GPIOE, GPIO11);
+            gpio_clear(GPIOE, GPIO9|GPIO13|GPIO14);
+            break;
+        case 4:
+            gpio_set(GPIOE, GPIO11|GPIO13);
+            gpio_clear(GPIOE, GPIO9|GPIO14);
+        case 5:
+            gpio_set(GPIOE, GPIO13);
+            gpio_clear(GPIOE, GPIO9|GPIO11|GPIO14);
+            break;
+
+        case 6:
+            gpio_set(GPIOE, GPIO9|GPIO13);
+            gpio_clear(GPIOE, GPIO11|GPIO14);
+            break;
+
+        case 7:
+            gpio_set(GPIOE, GPIO9);
+            gpio_clear(GPIOE, GPIO11|GPIO13|GPIO14);
+            break;
+
+        default:
+            gpio_set(GPIOE, GPIO9);
+            gpio_clear(GPIOE, GPIO11|GPIO13|GPIO14);
+            s = 1;
+            break;
+        }
+        s++;
+    }
+
 }
 
-void interrupt (){
-    rcc_periph_clock_enable(RCC_GPIOE);
-    gpio_mode_setup(GPIOE,GPIO_MODE_OUTPUT,GPIO_PUPD_NONE,GPIO9|GPIO11|GPIO13|GPIO14); //Для Шаг.двиг
+/*  void interrupt (){
+        rcc_periph_clock_enable(RCC_GPIOE);
+        gpio_mode_setup(GPIOE,GPIO_MODE_OUTPUT,GPIO_PUPD_NONE,GPIO9|GPIO11|GPIO13|GPIO14); //Для Шаг.двиг
 
-}
+    }*/
+
+
 
 //void pwm(){
 //
@@ -196,10 +217,11 @@ void interrupt (){
 //            }
 //      }
 //}
-//void delay (){
-//   for(volatile int i = 0; i<1'000'000; i++){
+void delay (){
+    for(volatile int i = 0; i<1'000'000; i++){
 
-//   }
+    }
+}
 //    //Подключение АЦП
 
 //    adc_power_off(ADC1);                                  // отключение АЦП-ADC1
